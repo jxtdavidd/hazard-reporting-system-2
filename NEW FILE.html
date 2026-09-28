@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>">
+    <title>Industrial Process Safety & HAZOP Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#111827',
+                            900: '#0f172a',
+                            950: '#080d1a',
+                        },
+                        hazard: {
+                            low: '#10b981',      /* Emerald green */
+                            medium: '#f59e0b',   /* Amber yellow */
+                            high: '#f97316',     /* Orange */
+                            critical: '#ef4444', /* Crimson red */
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.js"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        body.auth-locked > *:not(#loginScreen) { display: none !important; }
+        .public-mode .admin-filter-only { pointer-events: none; cursor: default; }
+        .public-mode .admin-filter-hint { visibility: hidden; }
+        .public-mode [onclick^="filterByScore"] { pointer-events: none; cursor: default; }
+        #loginScreen { background: radial-gradient(circle at top right, rgba(14, 165, 233, 0.18), transparent 42%), #080d1a; }
+        /* Custom scrollbar styling for modern sleek dark UI */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="auth-locked bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-slate-900">
+
+    <!-- Single entry point: the email determines which dashboard controls are available. -->
+    <section id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center p-6">
+        <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
+            <div class="flex items-center gap-3 mb-8">
+                <div class="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg shadow-cyan-500/20">
+                    <i data-lucide="shield-alert" class="w-7 h-7 text-slate-950"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-white">AURA Process Safety</h1>
+                    <p class="text-xs text-cyan-400">HAZOP dashboard access</p>
+                </div>
+            </div>
+            <form onsubmit="handleLogin(event)" class="space-y-5">
+                <div>
+                    <label for="loginEmail" class="block text-sm font-medium text-slate-300 mb-2">Email address</label>
+                    <input id="loginEmail" type="email" required autocomplete="email" placeholder="you@example.com" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold px-4 py-3 rounded-lg transition">Continue to dashboard</button>
+                <p class="text-xs text-slate-500 text-center">The administrator account is recognized by email.</p>
+            </form>
+        </div>
+    </section>
+
+    <!-- Navigation Bar -->
+    <header class="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40 px-4 lg:px-8 py-3 flex flex-wrap justify-between items-center gap-4">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg shadow-lg shadow-cyan-500/20">
+                <i data-lucide="shield-alert" class="w-6 h-6 text-slate-950 stroke-[2.5]"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent flex items-center gap-2">
+                    AURA Process Safety
+                    <span id="modeBadge" class="text-[10px] font-bold uppercase tracking-wider bg-cyan-500 text-slate-950 px-1.5 py-0.5 rounded">Admin</span>
+                </h1>
+                <p class="text-xs text-cyan-400 font-medium">HAZOP Walkthrough & Risk Management Console</p>
+            </div>
+        </div>
+
+        <!-- Quick Info & Action Bar -->
+        <div class="flex items-center space-x-3 text-xs sm:text-sm">
+            <button onclick="logout()" class="flex items-center bg-slate-800/80 border border-slate-700/60 hover:border-cyan-500/60 rounded-lg px-3 py-1.5 space-x-2 text-slate-300 hover:text-cyan-400 transition">
+                <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                <span>Sign out</span>
+            </button>
+            <div class="hidden sm:flex items-center bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 space-x-2">
+                <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-slate-300">Plant Status: <strong class="text-emerald-400 font-semibold">Normal Operations</strong></span>
+            </div>
+            
+            <button onclick="openModal('reportModal')" class="public-only bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold px-4 py-2 rounded-lg flex items-center space-x-2 shadow-md shadow-cyan-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]">
+                <i data-lucide="plus-circle" class="w-4 h-4 stroke-[2.5]"></i>
+                <span>Log New Hazard</span>
+            </button>
+        </div>
+    </header>
+
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
+
+        <!-- KPI Cards Section -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+            <!-- KPI 1 -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:border-slate-700 transition">
+                <div class="flex items-center justify-between text-slate-400 mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider">Total Hazards</span>
+                    <i data-lucide="file-text" class="w-4 h-4 text-cyan-400"></i>
+                </div>
+                <div class="flex items-baseline justify-between">
+                    <span id="kpiTotalHazards" class="text-2xl font-bold text-white">0</span>
+                    <span class="text-xs text-emerald-400 font-medium flex items-center"><i data-lucide="trending-up" class="w-3 h-3 mr-0.5"></i> All logs</span>
+                </div>
+            </div>
+
+            <!-- KPI 2 -->
+            <div onclick="filterByOpenActions()" class="admin-filter-only bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:border-amber-500/50 transition cursor-pointer">
+                <div class="flex items-center justify-between text-slate-400 mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider">Open Actions</span>
+                    <i data-lucide="clock" class="w-4 h-4 text-amber-400"></i>
+                </div>
+                <div class="flex items-baseline justify-between">
+                    <span id="kpiOpenActions" class="text-2xl font-bold text-amber-400">0</span>
+                    <span class="admin-filter-hint text-xs text-amber-300 font-medium">Click to view →</span>
+                </div>
+            </div>
+
+            <!-- KPI 3 -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:border-slate-700 transition">
+                <div class="flex items-center justify-between text-slate-400 mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider">Closed Incidents</span>
+                    <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+                </div>
+                <div class="flex items-baseline justify-between">
+                    <span id="kpiClosedIncidents" class="text-2xl font-bold text-emerald-400">0</span>
+                    <span class="text-xs text-emerald-400 font-medium">Resolved</span>
+                </div>
+            </div>
+
+            <!-- KPI 4 -->
+            <div onclick="filterByHighRisk()" class="admin-filter-only bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:border-red-500/50 transition cursor-pointer">
+                <div class="flex items-center justify-between text-slate-400 mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider">High Risk Nodes</span>
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-red-500"></i>
+                </div>
+                <div class="flex items-baseline justify-between">
+                    <span id="kpiHighRiskNodes" class="text-2xl font-bold text-red-500">0</span>
+                    <span class="admin-filter-hint text-xs text-red-400 font-medium">Score ≥ 15 →</span>
+                </div>
+            </div>
+
+            <!-- KPI 5 -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:border-slate-700 transition">
+                <div class="flex items-center justify-between text-slate-400 mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider">Avg. Days Open</span>
+                    <i data-lucide="hourglass" class="w-4 h-4 text-cyan-400"></i>
+                </div>
+                <div class="flex items-baseline justify-between">
+                    <span id="kpiAvgDaysOpen" class="text-2xl font-bold text-cyan-400">0</span>
+                    <span class="text-xs text-slate-400">Unresolved hazards</span>
+                </div>
+            </div>
+
+            <!-- KPI 6 -->
+            <div onclick="filterByCriticalOpen()" class="admin-filter-only bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:border-red-500/50 transition cursor-pointer">
+                <div class="flex items-center justify-between text-slate-400 mb-2">
+                    <span class="text-xs font-semibold uppercase tracking-wider">Critical Open</span>
+                    <i data-lucide="flame" class="w-4 h-4 text-red-500"></i>
+                </div>
+                <div class="flex items-baseline justify-between">
+                    <span id="kpiCriticalOpen" class="text-2xl font-bold text-red-500">0</span>
+                    <span class="admin-filter-hint text-xs text-red-400 font-medium">Unresolved →</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Visual Charts & Analytics Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Chart 1: Risk Distribution (Doughnut) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                        <i data-lucide="pie-chart" class="w-4 h-4 text-cyan-400"></i>
+                        Risk Rating Distribution
+                    </h2>
+                </div>
+                <div class="flex-1 relative min-h-[220px]">
+                    <canvas id="riskDistributionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 2: Hazards by Plant Node (Bar Chart) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4 text-cyan-400"></i>
+                        Hazards by Plant Node
+                    </h2>
+                </div>
+                <div class="flex-1 relative min-h-[220px]">
+                    <canvas id="nodeHazardChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 3: Monthly Safety Trends (Line Chart) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                        <i data-lucide="line-chart" class="w-4 h-4 text-cyan-400"></i>
+                        Monthly Safety Trends
+                    </h2>
+                </div>
+                <div class="flex-1 relative min-h-[220px]">
+                    <canvas id="safetyTrendChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5x5 Likelihood vs Severity Risk Matrix Heatmap -->
+        <section class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+                <div>
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                        <i data-lucide="grid" class="w-4 h-4 text-cyan-400"></i>
+                        5x5 Risk Matrix (Severity vs. Likelihood)
+                    </h2>
+                    <p id="matrixDescription" class="text-xs text-slate-400 mt-1">Click any matrix cell to filter active hazards by calculated score zone.</p>
+                </div>
+                <!-- Risk Level Badges Legend -->
+                <div class="flex items-center space-x-3 text-xs">
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span> Low (1-4)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-amber-500 inline-block"></span> Medium (5-9)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-orange-500 inline-block"></span> High (10-14)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-red-600 inline-block"></span> Critical (15-25)</span>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <div class="min-w-[600px] grid grid-cols-6 gap-1 text-center text-xs font-semibold">
+                    <!-- Top Corner Header -->
+                    <div class="p-2 text-slate-500 flex items-center justify-center font-normal">
+                        Likelihood ↓ / Severity →
+                    </div>
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded">1 - Negligible</div>
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded">2 - Minor</div>
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded">3 - Moderate</div>
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded">4 - Major</div>
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded">5 - Catastrophic</div>
+
+                    <!-- Row 5: Almost Certain -->
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded flex items-center justify-center font-normal">5 - Almost Certain</div>
+                    <div onclick="filterByScore(5)" class="p-3 bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-300 rounded cursor-pointer transition">5</div>
+                    <div onclick="filterByScore(10)" class="p-3 bg-orange-500/20 border border-orange-500/40 hover:bg-orange-500/30 text-orange-300 rounded cursor-pointer transition">10</div>
+                    <div onclick="filterByScore(15)" class="p-3 bg-red-600/30 border border-red-600/50 hover:bg-red-600/40 text-red-300 rounded cursor-pointer transition font-bold">15</div>
+                    <div onclick="filterByScore(20)" class="p-3 bg-red-600/30 border border-red-600/50 hover:bg-red-600/40 text-red-300 rounded cursor-pointer transition font-bold">20</div>
+                    <div onclick="filterByScore(25)" class="p-3 bg-red-600/40 border border-red-600/60 hover:bg-red-600/50 text-red-200 rounded cursor-pointer transition font-extrabold text-sm">25</div>
+
+                    <!-- Row 4: Likely -->
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded flex items-center justify-center font-normal">4 - Likely</div>
+                    <div onclick="filterByScore(4)" class="p-3 bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-300 rounded cursor-pointer transition">4</div>
+                    <div onclick="filterByScore(8)" class="p-3 bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-300 rounded cursor-pointer transition">8</div>
+                    <div onclick="filterByScore(12)" class="p-3 bg-orange-500/20 border border-orange-500/40 hover:bg-orange-500/30 text-orange-300 rounded cursor-pointer transition">12</div>
+                    <div onclick="filterByScore(16)" class="p-3 bg-red-600/30 border border-red-600/50 hover:bg-red-600/40 text-red-300 rounded cursor-pointer transition font-bold">16</div>
+                    <div onclick="filterByScore(20)" class="p-3 bg-red-600/30 border border-red-600/50 hover:bg-red-600/40 text-red-300 rounded cursor-pointer transition font-bold">20</div>
+
+                    <!-- Row 3: Possible -->
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded flex items-center justify-center font-normal">3 - Possible</div>
+                    <div onclick="filterByScore(3)" class="p-3 bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-300 rounded cursor-pointer transition">3</div>
+                    <div onclick="filterByScore(6)" class="p-3 bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-300 rounded cursor-pointer transition">6</div>
+                    <div onclick="filterByScore(9)" class="p-3 bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-300 rounded cursor-pointer transition">9</div>
+                    <div onclick="filterByScore(12)" class="p-3 bg-orange-500/20 border border-orange-500/40 hover:bg-orange-500/30 text-orange-300 rounded cursor-pointer transition">12</div>
+                    <div onclick="filterByScore(15)" class="p-3 bg-red-600/30 border border-red-600/50 hover:bg-red-600/40 text-red-300 rounded cursor-pointer transition font-bold">15</div>
+
+                    <!-- Row 2: Unlikely -->
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded flex items-center justify-center font-normal">2 - Unlikely</div>
+                    <div onclick="filterByScore(2)" class="p-3 bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-300 rounded cursor-pointer transition">2</div>
+                    <div onclick="filterByScore(4)" class="p-3 bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-300 rounded cursor-pointer transition">4</div>
+                    <div onclick="filterByScore(6)" class="p-3 bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-300 rounded cursor-pointer transition">6</div>
+                    <div onclick="filterByScore(8)" class="p-3 bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-300 rounded cursor-pointer transition">8</div>
+                    <div onclick="filterByScore(10)" class="p-3 bg-orange-500/20 border border-orange-500/40 hover:bg-orange-500/30 text-orange-300 rounded cursor-pointer transition">10</div>
+
+                    <!-- Row 1: Rare -->
+                    <div class="p-2 bg-slate-800 text-slate-300 rounded flex items-center justify-center font-normal">1 - Rare</div>
+                    <div onclick="filterByScore(1)" class="p-3 bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-300 rounded cursor-pointer transition">1</div>
+                    <div onclick="filterByScore(2)" class="p-3 bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-300 rounded cursor-pointer transition">2</div>
+                    <div onclick="filterByScore(3)" class="p-3 bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-300 rounded cursor-pointer transition">3</div>
+                    <div onclick="filterByScore(4)" class="p-3 bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-300 rounded cursor-pointer transition">4</div>
+                    <div onclick="filterByScore(5)" class="p-3 bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-300 rounded cursor-pointer transition">5</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Hazard Records Table with Filters -->
+        <section class="admin-only bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
+            <!-- Table Header Controls -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                        <i data-lucide="list" class="w-5 h-5 text-cyan-400"></i>
+                        Hazard Walkthrough Logs & Action Tracking
+                    </h2>
+                    <p class="text-xs text-slate-400">Detailed list of process safety deviations and maintenance recommendations.</p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- Search input -->
+                    <div class="relative min-w-[200px]">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+                        <input type="text" id="searchInput" oninput="applyFilters()" placeholder="Search node, guide, action..." class="w-full bg-slate-800 border border-slate-700 text-xs rounded-lg pl-9 pr-3 py-2 text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500">
+                    </div>
+
+                    <!-- Plant Node Filter -->
+                    <select id="nodeFilter" onchange="applyFilters()" class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                        <option value="ALL">All Plant Nodes</option>
+                        <option value="Node 1: Distillation Column Reboiler">Distillation Reboiler</option>
+                        <option value="Node 2: Reactor Inlet Feed Pump">Reactor Feed Pump</option>
+                        <option value="Node 3: Ammonia Storage Tank Farm">Storage Tank Farm</option>
+                        <option value="Node 4: Heat Exchanger Network">Heat Exchanger Net</option>
+                        <option value="Node 5: High Pressure Flare Stack">Flare Stack System</option>
+                    </select>
+
+                    <!-- Risk Level Filter -->
+                    <select id="riskFilter" onchange="applyFilters()" class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                        <option value="ALL">All Risk Levels</option>
+                        <option value="Low">Low Risk</option>
+                        <option value="Medium">Medium Risk</option>
+                        <option value="High">High Risk</option>
+                        <option value="Critical">Critical Risk</option>
+                    </select>
+
+                    <!-- Status Filter -->
+                    <select id="statusFilter" onchange="applyFilters()" class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                        <option value="ALL">All Statuses</option>
+                        <option value="Open">Open</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Closed">Closed</option>
+                    </select>
+
+                    <!-- Export CSV Button -->
+                    <button onclick="exportToCSV()" class="admin-only bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium px-3 py-2 rounded-lg flex items-center space-x-1.5 transition">
+                        <i data-lucide="download" class="w-3.5 h-3.5 text-cyan-400"></i>
+                        <span>Export CSV</span>
+                    </button>
+
+                    <!-- Import Public Submissions Button -->
+                    <input type="file" id="importFileInput" accept="application/json" class="hidden" onchange="importSubmissions(event)">
+                    <button onclick="document.getElementById('importFileInput').click()" class="admin-only bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium px-3 py-2 rounded-lg flex items-center space-x-1.5 transition">
+                        <i data-lucide="upload" class="w-3.5 h-3.5 text-emerald-400"></i>
+                        <span>Import Public Submissions</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="overflow-x-auto rounded-lg border border-slate-800">
+                <table class="w-full text-left text-xs text-slate-300">
+                    <thead class="bg-slate-800/80 text-slate-400 uppercase tracking-wider text-[11px] border-b border-slate-800">
+                        <tr>
+                            <th class="py-3 px-4">Log ID</th>
+                            <th class="py-3 px-4">Plant Node</th>
+                            <th class="py-3 px-4">HAZOP Deviation</th>
+                            <th class="py-3 px-4">Hazard Class</th>
+                            <th class="py-3 px-4">RPN Score</th>
+                            <th class="py-3 px-4">Status</th>
+                            <th class="py-3 px-4">Action Lead</th>
+                            <th class="py-3 px-4 text-right">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hazardTableBody" class="divide-y divide-slate-800/60 bg-slate-900/50">
+                        <!-- Dynamic Rows Injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Table Footer Record Count -->
+            <div class="flex items-center justify-between text-xs text-slate-400 pt-2">
+                <div>Showing <span id="recordCount" class="font-semibold text-slate-200">0</span> reported hazards</div>
+                <button onclick="resetFilters()" class="text-cyan-400 hover:underline">Reset All Filters</button>
+            </div>
+        </section>
+    </main>
+
+    <!-- HAZOP Hazard Logging Modal -->
+    <div id="reportModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden overflow-y-auto">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl my-8">
+            
+            <!-- Modal Header -->
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-850 rounded-t-2xl">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2 bg-cyan-500/10 border border-cyan-500/20 rounded-lg text-cyan-400">
+                        <i data-lucide="clipboard-plus" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-white">Log Process Hazard / HAZOP Study Walkthrough</h2>
+                        <p class="text-xs text-slate-400">Complete multi-factor safety evaluation and risk priority assessment</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('reportModal')" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Modal Form -->
+            <form id="hazardForm" onsubmit="handleFormSubmit(event)" class="p-6 overflow-y-auto space-y-6 text-xs text-slate-300">
+                
+                <!-- Section 1: Basic Plant Details -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-cyan-400 border-b border-slate-800 pb-1 flex items-center gap-1.5">
+                        <i data-lucide="factory" class="w-3.5 h-3.5"></i> Section 1: Plant Location & Inspector Metadata
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">Facility Node / Unit <span class="text-red-400">*</span></label>
+                            <select id="formNode" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="Node 1: Distillation Column Reboiler">Node 1: Distillation Column Reboiler (E-101)</option>
+                                <option value="Node 2: Reactor Inlet Feed Pump">Node 2: Reactor Inlet Feed Pump (P-101A/B)</option>
+                                <option value="Node 3: Ammonia Storage Tank Farm">Node 3: Ammonia Storage Tank Farm (TK-402)</option>
+                                <option value="Node 4: Heat Exchanger Network">Node 4: Heat Exchanger Network (HX-300)</option>
+                                <option value="Node 5: High Pressure Flare Stack">Node 5: High Pressure Flare Stack (FL-901)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">Inspector Name <span class="text-red-400">*</span></label>
+                            <input type="text" id="formInspector" required placeholder="e.g. Dr. H. Vance, Lead Safety Eng." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">Walkthrough Date & Shift</label>
+                            <input type="date" id="formDate" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">Hazard Category <span class="text-red-400">*</span></label>
+                            <select id="formHazardType" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="Chemical Spill / Toxic Leak">Chemical Spill / Toxic Leak</option>
+                                <option value="Overpressure / Burst Risk">Overpressure / Burst Risk</option>
+                                <option value="Fire / Thermal Explosion">Fire / Thermal Explosion</option>
+                                <option value="Mechanical / Valve Failure">Mechanical / Valve Failure</option>
+                                <option value="Electrical / Instrument Fault">Electrical / Instrument Fault</option>
+                                <option value="Unsafe Operator Condition">Unsafe Operator Condition</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Detailed HAZOP Parameters -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-cyan-400 border-b border-slate-800 pb-1 flex items-center gap-1.5">
+                        <i data-lucide="sliders" class="w-3.5 h-3.5"></i> Section 2: HAZOP Parameter Deviation Matrix
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">HAZOP Guideword <span class="text-red-400">*</span></label>
+                            <select id="formGuideword" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="More">MORE (High / Increase)</option>
+                                <option value="Less">LESS (Low / Decrease)</option>
+                                <option value="No / None">NO / NONE (Complete Absence)</option>
+                                <option value="As Well As">AS WELL AS (Contamination/Extra Phase)</option>
+                                <option value="Part Of">PART OF (Composition Change)</option>
+                                <option value="Reverse">REVERSE (Backflow / Counter Direction)</option>
+                                <option value="Other Than">OTHER THAN (Spurious / Substitution)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">Process Variable <span class="text-red-400">*</span></label>
+                            <select id="formVariable" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="Pressure">Pressure (barg)</option>
+                                <option value="Temperature">Temperature (°C)</option>
+                                <option value="Flow Rate">Flow Rate (m³/h)</option>
+                                <option value="Liquid Level">Liquid Level (%)</option>
+                                <option value="Composition / Concentration">Composition / Concentration</option>
+                                <option value="Phase Reaction">Phase Reaction / Viscosity</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Risk Evaluation & RPN Calculator -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-cyan-400 border-b border-slate-800 pb-1 flex items-center gap-1.5">
+                        <i data-lucide="calculator" class="w-3.5 h-3.5"></i> Section 3: Dynamic Risk Score Calculation
+                    </h3>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-850 p-4 rounded-xl border border-slate-800">
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">Likelihood (1 to 5)</label>
+                            <select id="formLikelihood" onchange="calculateRPN()" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="1">1 - Rare</option>
+                                <option value="2">2 - Unlikely</option>
+                                <option value="3" selected>3 - Possible</option>
+                                <option value="4">4 - Likely</option>
+                                <option value="5">5 - Almost Certain</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">Severity (1 to 5)</label>
+                            <select id="formSeverity" onchange="calculateRPN()" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="1">1 - Negligible</option>
+                                <option value="2">2 - Minor</option>
+                                <option value="3" selected>3 - Moderate</option>
+                                <option value="4">4 - Major</option>
+                                <option value="5">5 - Catastrophic</option>
+                            </select>
+                        </div>
+
+                        <!-- Computed RPN Result Card -->
+                        <div class="bg-slate-900 border border-slate-700/60 rounded-lg p-3 flex flex-col justify-center items-center">
+                            <span class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Calculated RPN</span>
+                            <div class="flex items-center space-x-2 mt-1">
+                                <span id="rpnValueDisplay" class="text-xl font-extrabold text-amber-400">9</span>
+                                <span id="rpnBadgeDisplay" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">Medium</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Safeguards Multi-select Checkboxes -->
+                    <div>
+                        <label class="block mb-1 font-medium text-slate-300">Existing Safeguards in Place</label>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <label class="flex items-center space-x-2 bg-slate-800/60 border border-slate-700/60 p-2 rounded-lg cursor-pointer hover:bg-slate-800">
+                                <input type="checkbox" name="safeguard" value="Relief Valve (PSV)" class="rounded text-cyan-500 focus:ring-0 bg-slate-900 border-slate-700">
+                                <span>Relief Valve (PSV)</span>
+                            </label>
+                            <label class="flex items-center space-x-2 bg-slate-800/60 border border-slate-700/60 p-2 rounded-lg cursor-pointer hover:bg-slate-800">
+                                <input type="checkbox" name="safeguard" value="Safety Interlock" class="rounded text-cyan-500 focus:ring-0 bg-slate-900 border-slate-700">
+                                <span>Safety Interlock</span>
+                            </label>
+                            <label class="flex items-center space-x-2 bg-slate-800/60 border border-slate-700/60 p-2 rounded-lg cursor-pointer hover:bg-slate-800">
+                                <input type="checkbox" name="safeguard" value="Bund / Containment Wall" class="rounded text-cyan-500 focus:ring-0 bg-slate-900 border-slate-700">
+                                <span>Bund Wall</span>
+                            </label>
+                            <label class="flex items-center space-x-2 bg-slate-800/60 border border-slate-700/60 p-2 rounded-lg cursor-pointer hover:bg-slate-800">
+                                <input type="checkbox" name="safeguard" value="Emergency Shutdown (ESD)" class="rounded text-cyan-500 focus:ring-0 bg-slate-900 border-slate-700">
+                                <span>ESD System</span>
+                            </label>
+                            <label class="flex items-center space-x-2 bg-slate-800/60 border border-slate-700/60 p-2 rounded-lg cursor-pointer hover:bg-slate-800">
+                                <input type="checkbox" name="safeguard" value="Deluge Fire System" class="rounded text-cyan-500 focus:ring-0 bg-slate-900 border-slate-700">
+                                <span>Deluge System</span>
+                            </label>
+                            <label class="flex items-center space-x-2 bg-slate-800/60 border border-slate-700/60 p-2 rounded-lg cursor-pointer hover:bg-slate-800">
+                                <input type="checkbox" name="safeguard" value="Operator PPE" class="rounded text-cyan-500 focus:ring-0 bg-slate-900 border-slate-700">
+                                <span>Specialized PPE</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 4: Action Plan & Remediation -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-cyan-400 border-b border-slate-800 pb-1 flex items-center gap-1.5">
+                        <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Section 4: Action Plan & Control Hierarchy
+                    </h3>
+
+                    <div>
+                        <label class="block mb-1 font-medium text-slate-300">Hazard Observation & Root Cause <span class="text-red-400">*</span></label>
+                        <textarea id="formDescription" required rows="2" placeholder="Describe findings, potential causes, and consequences..." class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block mb-1 font-medium text-slate-300">Proposed Recommendation / Corrective Action <span class="text-red-400">*</span></label>
+                        <textarea id="formAction" required rows="2" placeholder="Engineering or administrative controls required to mitigate risk..." class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">Assigned Action Lead <span class="text-red-400">*</span></label>
+                            <input type="text" id="formAssignee" required placeholder="e.g. M. Jenkins (Maintenance)" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+
+                        <div>
+                            <label class="block mb-1 font-medium text-slate-300">Control Level Hierarchy</label>
+                            <select id="formControlLevel" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="Engineering Controls">Engineering Controls (Interlocks, Isolation)</option>
+                                <option value="Elimination">Elimination (Remove hazard completely)</option>
+                                <option value="Substitution">Substitution (Lower pressure/toxic chemical)</option>
+                                <option value="Administrative Controls">Administrative Controls (SOP / Training)</option>
+                                <option value="PPE">PPE (Personal Protective Equipment)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Actions -->
+                <div class="pt-4 border-t border-slate-800 flex items-center justify-end space-x-3">
+                    <button type="button" onclick="closeModal('reportModal')" class="px-4 py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 font-medium">Cancel</button>
+                    <button type="submit" class="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold px-5 py-2 rounded-lg shadow-md shadow-cyan-500/20">Submit Hazard Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Detailed Hazard Viewing Modal -->
+    <div id="detailModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-6 text-xs text-slate-300">
+            <div class="flex justify-between items-start border-b border-slate-800 pb-4">
+                <div>
+                    <span id="detailLogId" class="text-xs text-cyan-400 font-mono font-bold">LOG-000</span>
+                    <h2 id="detailNode" class="text-base font-bold text-white mt-0.5">Node Name</h2>
+                </div>
+                <button onclick="closeModal('detailModal')" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Detail Grid -->
+            <div class="grid grid-cols-2 gap-4 bg-slate-850 p-4 rounded-xl border border-slate-800">
+                <div>
+                    <span class="text-[10px] text-slate-400 uppercase">HAZOP Deviation</span>
+                    <p id="detailDeviation" class="font-semibold text-slate-200">More Flow</p>
+                </div>
+                <div>
+                    <span class="text-[10px] text-slate-400 uppercase">Hazard Class</span>
+                    <p id="detailHazardType" class="font-semibold text-slate-200">Overpressure</p>
+                </div>
+                <div>
+                    <span class="text-[10px] text-slate-400 uppercase">RPN Risk Rating</span>
+                    <div id="detailRiskBadge" class="mt-1"></div>
+                </div>
+                <div>
+                    <span class="text-[10px] text-slate-400 uppercase">Status</span>
+                    <select id="detailStatusSelect" onchange="updateStatus()" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-200 font-semibold focus:outline-none focus:border-cyan-500">
+                        <option value="Open">Open</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Closed">Closed</option>
+                    </select>
+                    <span id="detailStatusSaved" class="hidden text-[10px] text-emerald-400 font-medium mt-1 flex items-center gap-1"><i data-lucide="check" class="w-3 h-3"></i> Updated</span>
+                </div>
+            </div>
+
+            <div>
+                <h4 class="font-bold text-slate-200 mb-1">Hazard Description & Root Cause:</h4>
+                <p id="detailDesc" class="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60 text-slate-300 leading-relaxed">...</p>
+            </div>
+
+            <div>
+                <h4 class="font-bold text-slate-200 mb-1">Proposed Corrective Action:</h4>
+                <p id="detailAction" class="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60 text-slate-300 leading-relaxed">...</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <span class="text-slate-400">Assigned Action Lead:</span>
+                    <p id="detailAssignee" class="font-semibold text-slate-200">John Doe</p>
+                </div>
+                <div>
+                    <span class="text-slate-400">Safeguards Present:</span>
+                    <p id="detailSafeguards" class="font-semibold text-cyan-400">PSV, Interlock</p>
+                </div>
+            </div>
+
+            <div class="pt-4 border-t border-slate-800 flex justify-end">
+                <button onclick="closeModal('detailModal')" class="bg-slate-800 hover:bg-slate-700 text-white font-medium px-4 py-2 rounded-lg">Close Details</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application JavaScript Logic -->
+    <script>
+        // Pre-populated Sample Data representing realistic Chemical Engineering process hazards
+        let hazardData = [
+            {
+                id: "LOG-101",
+                node: "Node 1: Distillation Column Reboiler",
+                inspector: "Dr. H. Vance",
+                date: "2026-03-12",
+                hazardType: "Overpressure / Burst Risk",
+                guideword: "More",
+                variable: "Pressure",
+                likelihood: 4,
+                severity: 4,
+                rpn: 16,
+                riskLevel: "Critical",
+                safeguards: ["Relief Valve (PSV)", "Safety Interlock"],
+                description: "Steam control valve positioner stickiness causing pressure spike in tower bottoms.",
+                action: "Recalibrate control valve actuator and test PSV relief capacity setting.",
+                assignee: "M. Jenkins (E&I)",
+                controlLevel: "Engineering Controls",
+                status: "Open"
+            },
+            {
+                id: "LOG-102",
+                node: "Node 3: Ammonia Storage Tank Farm",
+                inspector: "S. Martinez",
+                date: "2026-03-14",
+                hazardType: "Chemical Spill / Toxic Leak",
+                guideword: "Less",
+                variable: "Liquid Level",
+                likelihood: 2,
+                severity: 5,
+                rpn: 10,
+                riskLevel: "High",
+                safeguards: ["Bund / Containment Wall", "ESD System"],
+                description: "Minor seal leak detected on discharge flange during low-level pump suction test.",
+                action: "Replace spiral wound gasket and re-torque flange bolts to standard.",
+                assignee: "R. Sterling (Mech)",
+                controlLevel: "Engineering Controls",
+                status: "In Progress"
+            },
+            {
+                id: "LOG-103",
+                node: "Node 2: Reactor Inlet Feed Pump",
+                inspector: "A. Patel",
+                date: "2026-03-15",
+                hazardType: "Mechanical / Valve Failure",
+                guideword: "No / None",
+                variable: "Flow Rate",
+                likelihood: 3,
+                severity: 3,
+                rpn: 9,
+                riskLevel: "Medium",
+                safeguards: ["Operator PPE"],
+                description: "Check valve internal chattering causing reduced feed flow to reactor train.",
+                action: "Swap to standby pump P-101B and inspect check valve internals.",
+                assignee: "D. O'Connor (Ops)",
+                controlLevel: "Substitution",
+                status: "Open"
+            },
+            {
+                id: "LOG-104",
+                node: "Node 4: Heat Exchanger Network",
+                inspector: "Dr. H. Vance",
+                date: "2026-03-18",
+                hazardType: "Fire / Thermal Explosion",
+                guideword: "More",
+                variable: "Temperature",
+                likelihood: 2,
+                severity: 2,
+                rpn: 4,
+                riskLevel: "Low",
+                safeguards: ["Deluge Fire System"],
+                description: "Fouling in tube bundle causing slight temperature excursion on cooling medium outlet.",
+                action: "Schedule chemical cleaning during upcoming maintenance turnaround.",
+                assignee: "K. Al-Mansoor",
+                controlLevel: "Administrative Controls",
+                status: "Closed"
+            },
+            {
+                id: "LOG-105",
+                node: "Node 5: High Pressure Flare Stack",
+                inspector: "S. Martinez",
+                date: "2026-03-20",
+                hazardType: "Unsafe Operator Condition",
+                guideword: "Other Than",
+                variable: "Composition / Concentration",
+                likelihood: 3,
+                severity: 4,
+                rpn: 12,
+                riskLevel: "High",
+                safeguards: ["ESD System", "Relief Valve (PSV)"],
+                description: "Pilot light igniter intermittent fault under heavy rain conditions.",
+                action: "Replace spark ignition module and install protective weather shield.",
+                assignee: "T. Henderson (E&I)",
+                controlLevel: "Engineering Controls",
+                status: "Open"
+            }
+        ];
+
+        const ADMIN_EMAIL = 'davidmarknebu@gmail.com';
+        const HAZARD_STORAGE_KEY = 'aura-process-safety-hazards';
+        const SESSION_KEY = 'aura-process-safety-session';
+        const LOCAL_SUBMISSIONS_KEY = 'aura-process-safety-public-submissions';
+        const POLL_INTERVAL_MS = 5000;
+
+        // ---- SYNC BACKEND (needed for updates to reach OTHER devices) -------------------------
+        // Leave empty to sync only between tabs of the same browser (localStorage).
+        // For real admin -> public sync across devices, paste a JSON endpoint that supports
+        // GET (read) and PUT (write), e.g. a Firebase Realtime Database URL:
+        //   'https://YOUR-PROJECT-default-rtdb.firebaseio.com/hazards.json'
+        const SYNC_URL = '';
+        // ---------------------------------------------------------------------------------------
+
+        let currentRole = null;
+        let filteredData = [...hazardData];
+        let lastSyncStamp = 0;   // timestamp of the version currently on screen
+        let pollTimer = null;
+        let sharedIds = new Set(); // ids that came from the admin's shared record
+
+        // Chart References
+        let riskChart, nodeChart, trendChart;
+
+        // Read the shared record: { updatedAt, data } or null
+        async function readShared() {
+            if (SYNC_URL) {
+                const res = await fetch(SYNC_URL, { cache: 'no-store' });
+                if (!res.ok) throw new Error('Sync read failed: ' + res.status);
+                return await res.json();
+            }
+            const saved = localStorage.getItem(HAZARD_STORAGE_KEY);
+            return saved ? JSON.parse(saved) : null;
+        }
+
+        async function writeShared(record) {
+            if (SYNC_URL) {
+                const res = await fetch(SYNC_URL, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(record)
+                });
+                if (!res.ok) throw new Error('Sync write failed: ' + res.status);
+                return;
+            }
+            localStorage.setItem(HAZARD_STORAGE_KEY, JSON.stringify(record));
+        }
+
+        function getLocalSubmissions() {
+            try { return JSON.parse(localStorage.getItem(LOCAL_SUBMISSIONS_KEY)) || []; }
+            catch (e) { return []; }
+        }
+
+        // Shared records + anything this public visitor submitted locally
+        function mergeWithLocalSubmissions(shared) {
+            if (currentRole === 'admin') return shared;
+            const ids = new Set(shared.map(i => i.id));
+            return [...getLocalSubmissions().filter(i => !ids.has(i.id)), ...shared];
+        }
+
+        // Re-apply whatever search/filters the viewer currently has on screen
+        function refreshView() {
+            const hasActiveFilter = ['nodeFilter', 'riskFilter', 'statusFilter']
+                .some(id => document.getElementById(id) && document.getElementById(id).value !== 'ALL')
+                || (document.getElementById('searchInput') && document.getElementById('searchInput').value);
+            if (hasActiveFilter) applyFilters(); else filteredData = [...hazardData];
+            renderTable();
+            updateKPIs();
+            updateCharts();
+            lucide.createIcons();
+        }
+
+        async function loadSharedHazards() {
+            try {
+                const record = await readShared();
+                if (record && Array.isArray(record.data)) {
+                    sharedIds = new Set(record.data.map(i => i.id));
+                    hazardData = mergeWithLocalSubmissions(record.data);
+                    lastSyncStamp = record.updatedAt || 0;
+                }
+            } catch (error) {
+                console.warn('Shared storage is unavailable; using built-in data.', error);
+            }
+            filteredData = [...hazardData];
+        }
+
+        // Only the admin publishes to the shared store. Public submissions stay on that visitor's device.
+        async function saveSharedHazards() {
+            try {
+                if (currentRole === 'admin') {
+                    const stamp = Date.now();
+                    await writeShared({ updatedAt: stamp, data: hazardData });
+                    lastSyncStamp = stamp;
+                } else {
+                    localStorage.setItem(LOCAL_SUBMISSIONS_KEY, JSON.stringify(hazardData.filter(i => !sharedIds.has(i.id))));
+                }
+            } catch (error) {
+                console.warn('Could not save shared hazards.', error);
+            }
+        }
+
+        // Every 5 seconds: check for a newer admin version and refresh the screen if there is one
+        async function pollForUpdates() {
+            if (!currentRole || document.hidden) return;
+            try {
+                const record = await readShared();
+                if (!record || !Array.isArray(record.data)) return;
+                if ((record.updatedAt || 0) === lastSyncStamp) return;
+                lastSyncStamp = record.updatedAt || 0;
+                sharedIds = new Set(record.data.map(i => i.id));
+                hazardData = mergeWithLocalSubmissions(record.data);
+                refreshView();
+            } catch (error) {
+                console.warn('Live update check failed; will retry.', error);
+            }
+        }
+
+        function startPolling() {
+            stopPolling();
+            pollTimer = setInterval(pollForUpdates, POLL_INTERVAL_MS);
+            document.addEventListener('visibilitychange', onVisibilityChange);
+        }
+
+        function stopPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        }
+
+        function onVisibilityChange() {
+            if (!document.hidden) pollForUpdates(); // catch up instantly when the tab is shown again
+        }
+
+        function renderRole() {
+            const isAdmin = currentRole === 'admin';
+            document.body.classList.toggle('admin-mode', isAdmin);
+            document.body.classList.toggle('public-mode', !isAdmin);
+            document.querySelectorAll('.admin-only').forEach(element => {
+                element.classList.toggle('hidden', !isAdmin);
+            });
+            document.querySelectorAll('.public-only').forEach(element => {
+                element.classList.toggle('hidden', isAdmin);
+            });
+            document.getElementById('modeBadge').innerText = isAdmin ? 'Admin' : 'Public View';
+            document.getElementById('modeBadge').className = isAdmin
+                ? 'text-[10px] font-bold uppercase tracking-wider bg-cyan-500 text-slate-950 px-1.5 py-0.5 rounded'
+                : 'text-[10px] font-bold uppercase tracking-wider bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded';
+            document.getElementById('matrixDescription').innerText = isAdmin
+                ? 'Click any matrix cell to filter active hazards by calculated score zone.'
+                : 'Risk matrix reference for estimating Likelihood x Severity.';
+        }
+
+        // Show the dashboard for a given role (used by fresh login AND by restoring a saved session)
+        function enterDashboard(role) {
+            currentRole = role;
+            document.body.classList.remove('auth-locked');
+            document.getElementById('loginScreen').classList.add('hidden');
+            renderRole();
+            startPolling();
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+            const role = email === ADMIN_EMAIL ? 'admin' : 'public';
+            try { localStorage.setItem(SESSION_KEY, JSON.stringify({ role, email })); } catch (e) {}
+            currentRole = role;
+            await loadSharedHazards();
+            enterDashboard(role);
+            refreshView();
+        }
+
+        function logout() {
+            try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+            stopPolling();
+            currentRole = null;
+            document.body.classList.add('auth-locked');
+            document.getElementById('loginEmail').value = '';
+            document.getElementById('loginScreen').classList.remove('hidden');
+        }
+
+        // Instant cross-tab update (same browser) on top of the 5-second poll
+        window.addEventListener('storage', event => {
+            if (event.key === HAZARD_STORAGE_KEY && !SYNC_URL) pollForUpdates();
+            if (event.key === SESSION_KEY && !event.newValue && currentRole) logout(); // logged out in another tab
+        });
+
+        // On Page Load Initialization
+        window.onload = async function() {
+            lucide.createIcons();
+
+            // Restore a saved login so a refresh keeps you signed in until you press Sign out
+            let session = null;
+            try { session = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (e) {}
+            if (session && (session.role === 'admin' || session.role === 'public')) {
+                currentRole = session.role;
+            }
+
+            await loadSharedHazards();
+
+            // Set default date in form to today
+            document.getElementById('formDate').value = new Date().toISOString().split('T')[0];
+
+            // Render components
+            renderTable();
+            updateKPIs();
+            initCharts();
+            calculateRPN();
+
+            if (session && currentRole) enterDashboard(currentRole);
+        };
+
+        // Render Records Table
+        function renderTable() {
+            const tbody = document.getElementById('hazardTableBody');
+            tbody.innerHTML = '';
+
+            document.getElementById('recordCount').innerText = filteredData.length;
+
+            if (filteredData.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center py-8 text-slate-500">
+                            No process hazards match the selected filter criteria.
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            filteredData.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/40 transition border-b border-slate-800/40";
+
+                // Badge colors for risk rating
+                let badgeClass = "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
+                if (item.riskLevel === 'Medium') badgeClass = "bg-amber-500/20 text-amber-300 border-amber-500/40";
+                if (item.riskLevel === 'High') badgeClass = "bg-orange-500/20 text-orange-300 border-orange-500/40";
+                if (item.riskLevel === 'Critical') badgeClass = "bg-red-600/30 text-red-300 border-red-600/50 font-bold";
+
+                // Status styling
+                let statusClass = "text-amber-400 bg-amber-400/10";
+                if (item.status === 'Closed') statusClass = "text-emerald-400 bg-emerald-400/10";
+                if (item.status === 'In Progress') statusClass = "text-cyan-400 bg-cyan-400/10";
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 font-mono text-cyan-400 font-bold">${item.id}</td>
+                    <td class="py-3 px-4 font-medium text-slate-200 max-w-[180px] truncate">${item.node}</td>
+                    <td class="py-3 px-4"><span class="text-slate-300 font-semibold">${item.guideword}</span> ${item.variable}</td>
+                    <td class="py-3 px-4 text-slate-400">${item.hazardType}</td>
+                    <td class="py-3 px-4">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] border ${badgeClass}">
+                            ${item.rpn} - ${item.riskLevel}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${statusClass}">
+                            ${item.status}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4 text-slate-300">${item.assignee}</td>
+                    <td class="py-3 px-4 text-right">
+                        <div class="flex items-center justify-end gap-1">
+                            ${item.status !== 'Closed'
+                                ? `<button onclick="quickCloseIncident('${item.id}')" title="Mark as Closed" class="text-slate-400 hover:text-emerald-400 p-1 transition">
+                                        <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                                   </button>`
+                                : `<button onclick="reopenIncident('${item.id}')" title="Reopen" class="text-slate-400 hover:text-amber-400 p-1 transition">
+                                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                   </button>`
+                            }
+                            <button onclick="viewDetails('${item.id}')" title="View Details" class="text-slate-400 hover:text-cyan-400 p-1 transition">
+                                <i data-lucide="eye" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            lucide.createIcons();
+        }
+
+        // Apply Filters
+        function applyFilters() {
+            const searchValue = document.getElementById('searchInput').value.toLowerCase();
+            const nodeValue = document.getElementById('nodeFilter').value;
+            const riskValue = document.getElementById('riskFilter').value;
+            const statusValue = document.getElementById('statusFilter').value;
+
+            filteredData = hazardData.filter(item => {
+                const matchesSearch = item.node.toLowerCase().includes(searchValue) ||
+                                      item.guideword.toLowerCase().includes(searchValue) ||
+                                      item.description.toLowerCase().includes(searchValue) ||
+                                      item.assignee.toLowerCase().includes(searchValue);
+
+                const matchesNode = (nodeValue === 'ALL') || (item.node === nodeValue);
+                const matchesRisk = (riskValue === 'ALL') || (item.riskLevel === riskValue);
+                const matchesStatus = (statusValue === 'ALL') || (item.status === statusValue);
+
+                return matchesSearch && matchesNode && matchesRisk && matchesStatus;
+            });
+
+            renderTable();
+        }
+
+        // Filter Matrix Click Handler
+        function filterByScore(score) {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('nodeFilter').value = 'ALL';
+            document.getElementById('riskFilter').value = 'ALL';
+            document.getElementById('statusFilter').value = 'ALL';
+
+            filteredData = hazardData.filter(item => item.rpn === score);
+            renderTable();
+        }
+
+        // Reset All Filters
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('nodeFilter').value = 'ALL';
+            document.getElementById('riskFilter').value = 'ALL';
+            document.getElementById('statusFilter').value = 'ALL';
+            filteredData = [...hazardData];
+            renderTable();
+        }
+
+        // Scroll the table into view after a KPI-card quick filter
+        function scrollToTable() {
+            document.getElementById('hazardTableBody').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // KPI card shortcut: jump straight to all non-closed records (Open + In Progress)
+        function filterByOpenActions() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('nodeFilter').value = 'ALL';
+            document.getElementById('riskFilter').value = 'ALL';
+            document.getElementById('statusFilter').value = 'ALL';
+
+            filteredData = hazardData.filter(item => item.status !== 'Closed');
+            renderTable();
+            scrollToTable();
+        }
+
+        // KPI card shortcut: jump straight to all Critical (RPN >= 15) records
+        function filterByHighRisk() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('nodeFilter').value = 'ALL';
+            document.getElementById('riskFilter').value = 'ALL';
+            document.getElementById('statusFilter').value = 'ALL';
+
+            filteredData = hazardData.filter(item => item.rpn >= 15);
+            renderTable();
+            scrollToTable();
+        }
+
+        // KPI card shortcut: jump straight to Critical-risk records that are still unresolved
+        function filterByCriticalOpen() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('nodeFilter').value = 'ALL';
+            document.getElementById('riskFilter').value = 'Critical';
+            document.getElementById('statusFilter').value = 'ALL';
+
+            filteredData = hazardData.filter(item => item.riskLevel === 'Critical' && item.status !== 'Closed');
+            renderTable();
+            scrollToTable();
+        }
+
+        // Update Dashboard KPI Values
+        function updateKPIs() {
+            const total = hazardData.length;
+            const open = hazardData.filter(i => i.status !== 'Closed').length;
+            const closed = hazardData.filter(i => i.status === 'Closed').length;
+            const highRisk = hazardData.filter(i => i.rpn >= 15).length;
+            const openItems = hazardData.filter(i => i.status !== 'Closed');
+            const criticalOpen = openItems.filter(i => i.riskLevel === 'Critical').length;
+
+            // Average age (in days) of every hazard that is still unresolved
+            let avgDaysOpen = 0;
+            if (openItems.length > 0) {
+                const today = new Date();
+                const totalDays = openItems.reduce((sum, item) => {
+                    const logged = new Date(item.date);
+                    const days = Math.max(0, Math.round((today - logged) / (1000 * 60 * 60 * 24)));
+                    return sum + days;
+                }, 0);
+                avgDaysOpen = Math.round(totalDays / openItems.length);
+            }
+
+            document.getElementById('kpiTotalHazards').innerText = total;
+            document.getElementById('kpiOpenActions').innerText = open;
+            document.getElementById('kpiClosedIncidents').innerText = closed;
+            document.getElementById('kpiHighRiskNodes').innerText = highRisk;
+            document.getElementById('kpiAvgDaysOpen').innerText = avgDaysOpen;
+            document.getElementById('kpiCriticalOpen').innerText = criticalOpen;
+        }
+
+        // Calculate RPN Score dynamically in Form
+        function calculateRPN() {
+            const likelihood = parseInt(document.getElementById('formLikelihood').value) || 1;
+            const severity = parseInt(document.getElementById('formSeverity').value) || 1;
+            const rpn = likelihood * severity;
+
+            const display = document.getElementById('rpnValueDisplay');
+            const badge = document.getElementById('rpnBadgeDisplay');
+
+            display.innerText = rpn;
+
+            if (rpn <= 4) {
+                badge.innerText = 'Low';
+                badge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+                display.className = "text-xl font-extrabold text-emerald-400";
+            } else if (rpn <= 9) {
+                badge.innerText = 'Medium';
+                badge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40";
+                display.className = "text-xl font-extrabold text-amber-400";
+            } else if (rpn <= 14) {
+                badge.innerText = 'High';
+                badge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/20 text-orange-300 border border-orange-500/40";
+                display.className = "text-xl font-extrabold text-orange-400";
+            } else {
+                badge.innerText = 'Critical';
+                badge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-red-600/30 text-red-300 border border-red-600/50";
+                display.className = "text-xl font-extrabold text-red-500";
+            }
+        }
+
+        // Initialize Visual Analytics Charts
+        function initCharts() {
+            Chart.defaults.color = '#94a3b8';
+            Chart.defaults.font.family = 'Inter';
+
+            // Chart 1: Risk Distribution Doughnut
+            const ctx1 = document.getElementById('riskDistributionChart').getContext('2d');
+            riskChart = new Chart(ctx1, {
+                type: 'doughnut',
+                data: getRiskChartData(),
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } }
+                    },
+                    cutout: '70%'
+                }
+            });
+
+            // Chart 2: Hazards by Plant Node Bar Chart
+            const ctx2 = document.getElementById('nodeHazardChart').getContext('2d');
+            nodeChart = new Chart(ctx2, {
+                type: 'bar',
+                data: getNodeChartData(),
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { grid: { color: '#1e293b' }, ticks: { stepSize: 1 } }
+                    }
+                }
+            });
+
+            // Chart 3: Monthly Safety Trends Line Chart
+            const ctx3 = document.getElementById('safetyTrendChart').getContext('2d');
+            trendChart = new Chart(ctx3, {
+                type: 'line',
+                data: {
+                    labels: ['Nov', 'Dec', 'Jan', 'Feb', 'Mar'],
+                    datasets: [
+                        {
+                            label: 'Hazards Logged',
+                            data: [8, 12, 6, 9, hazardData.length],
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        },
+                        {
+                            label: 'Actions Closed',
+                            data: [6, 10, 7, 8, 3],
+                            borderColor: '#10b981',
+                            fill: false,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { grid: { color: '#1e293b' } }
+                    }
+                }
+            });
+        }
+
+        // Helper: Calculate Risk Doughnut Chart Data
+        function getRiskChartData() {
+            const counts = { Low: 0, Medium: 0, High: 0, Critical: 0 };
+            hazardData.forEach(i => counts[i.riskLevel]++);
+
+            return {
+                labels: ['Low', 'Medium', 'High', 'Critical'],
+                datasets: [{
+                    data: [counts.Low, counts.Medium, counts.High, counts.Critical],
+                    backgroundColor: ['#10b981', '#f59e0b', '#f97316', '#ef4444'],
+                    borderWidth: 0
+                }]
+            };
+        }
+
+        // Helper: Calculate Node Bar Chart Data
+        function getNodeChartData() {
+            const nodes = {};
+            hazardData.forEach(i => {
+                const shortNode = i.node.split(':')[0];
+                nodes[shortNode] = (nodes[shortNode] || 0) + 1;
+            });
+
+            return {
+                labels: Object.keys(nodes),
+                datasets: [{
+                    label: 'Hazards',
+                    data: Object.values(nodes),
+                    backgroundColor: '#38bdf8',
+                    borderRadius: 6
+                }]
+            };
+        }
+
+        // Refresh Chart Visuals
+        function updateCharts() {
+            if (riskChart && nodeChart) {
+                riskChart.data = getRiskChartData();
+                riskChart.update();
+
+                nodeChart.data = getNodeChartData();
+                nodeChart.update();
+            }
+        }
+
+        // Form Submission Handler
+        function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const likelihood = parseInt(document.getElementById('formLikelihood').value);
+            const severity = parseInt(document.getElementById('formSeverity').value);
+            const rpn = likelihood * severity;
+
+            let riskLevel = 'Low';
+            if (rpn >= 5 && rpn <= 9) riskLevel = 'Medium';
+            if (rpn >= 10 && rpn <= 14) riskLevel = 'High';
+            if (rpn >= 15) riskLevel = 'Critical';
+
+            // Gather selected safeguards
+            const selectedSafeguards = [];
+            document.querySelectorAll('input[name="safeguard"]:checked').forEach(cb => {
+                selectedSafeguards.push(cb.value);
+            });
+
+            const newLog = {
+                id: `LOG-${Date.now()}`,
+                node: document.getElementById('formNode').value,
+                inspector: document.getElementById('formInspector').value,
+                date: document.getElementById('formDate').value,
+                hazardType: document.getElementById('formHazardType').value,
+                guideword: document.getElementById('formGuideword').value,
+                variable: document.getElementById('formVariable').value,
+                likelihood: likelihood,
+                severity: severity,
+                rpn: rpn,
+                riskLevel: riskLevel,
+                safeguards: selectedSafeguards.length > 0 ? selectedSafeguards : ["None Specified"],
+                description: document.getElementById('formDescription').value,
+                action: document.getElementById('formAction').value,
+                assignee: document.getElementById('formAssignee').value,
+                controlLevel: document.getElementById('formControlLevel').value,
+                status: "Open"
+            };
+
+            // Insert new log into state
+            hazardData.unshift(newLog);
+            filteredData = [...hazardData];
+            saveSharedHazards();
+
+            // Re-render UI
+            renderTable();
+            updateKPIs();
+            updateCharts();
+
+            // Reset form and close modal
+            document.getElementById('hazardForm').reset();
+            closeModal('reportModal');
+        }
+
+        // Track which log is currently open in the detail modal
+        let activeDetailLogId = null;
+
+        // View Hazard Details Modal
+        function viewDetails(logId) {
+            const item = hazardData.find(i => i.id === logId);
+            if (!item) return;
+
+            activeDetailLogId = logId;
+
+            document.getElementById('detailLogId').innerText = item.id;
+            document.getElementById('detailNode').innerText = item.node;
+            document.getElementById('detailDeviation').innerText = `${item.guideword} ${item.variable}`;
+            document.getElementById('detailHazardType').innerText = item.hazardType;
+            document.getElementById('detailStatusSelect').value = item.status;
+            document.getElementById('detailStatusSaved').classList.add('hidden');
+            document.getElementById('detailDesc').innerText = item.description;
+            document.getElementById('detailAction').innerText = item.action;
+            document.getElementById('detailAssignee').innerText = item.assignee;
+            document.getElementById('detailSafeguards').innerText = item.safeguards.join(', ');
+
+            // Badge styling
+            let badgeClass = "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
+            if (item.riskLevel === 'Medium') badgeClass = "bg-amber-500/20 text-amber-300 border-amber-500/40";
+            if (item.riskLevel === 'High') badgeClass = "bg-orange-500/20 text-orange-300 border-orange-500/40";
+            if (item.riskLevel === 'Critical') badgeClass = "bg-red-600/30 text-red-300 border-red-600/50 font-bold";
+
+            document.getElementById('detailRiskBadge').innerHTML = `
+                <span class="inline-flex items-center px-2.5 py-1 rounded text-xs border ${badgeClass}">
+                    RPN ${item.rpn} - ${item.riskLevel} Risk
+                </span>
+            `;
+
+            openModal('detailModal');
+        }
+
+        // Core: change a record's status and refresh every dependent view in real time
+        function setStatus(logId, newStatus) {
+            const item = hazardData.find(i => i.id === logId);
+            if (!item) return;
+
+            item.status = newStatus;
+            saveSharedHazards();
+
+            // filteredData holds references to the same objects, so it reflects
+            // the change automatically -- just re-render everything that depends on it
+            renderTable();
+            updateKPIs();
+            updateCharts();
+        }
+
+        // Called by the Status dropdown inside the detail modal (updates live, no save button needed)
+        function updateStatus() {
+            if (!activeDetailLogId) return;
+            const newStatus = document.getElementById('detailStatusSelect').value;
+            setStatus(activeDetailLogId, newStatus);
+
+            const saved = document.getElementById('detailStatusSaved');
+            saved.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        // One-click "Close" action straight from the table row
+        function quickCloseIncident(logId) {
+            setStatus(logId, 'Closed');
+        }
+
+        // One-click "Reopen" action straight from the table row
+        function reopenIncident(logId) {
+            setStatus(logId, 'Open');
+        }
+
+        // Modal Controls
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        // Escape a value for safe inclusion in a CSV cell
+        function csvCell(value) {
+            const str = String(value ?? "");
+            // Always quote, and double up any internal quotes per CSV spec
+            return `"${str.replace(/"/g, '""')}"`;
+        }
+
+        // Export Records to CSV File
+        function exportToCSV() {
+            if (filteredData.length === 0) return;
+
+            const headers = ["Log ID", "Plant Node", "Inspector", "Date", "Hazard Type", "Guideword", "Variable", "RPN", "Risk Level", "Status", "Assignee"];
+            const rows = filteredData.map(item => [
+                item.id,
+                item.node,
+                item.inspector,
+                item.date,
+                item.hazardType,
+                item.guideword,
+                item.variable,
+                item.rpn,
+                item.riskLevel,
+                item.status,
+                item.assignee
+            ].map(csvCell));
+
+            const csvContent = [headers.map(csvCell).join(","), ...rows.map(r => r.join(","))].join("\r\n");
+
+            // Use a Blob instead of a data: URI so exports work reliably at any size
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `AURA_Process_Safety_Report_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        // Import hazard submissions exported from the public-facing page (JSON file)
+        function importSubmissions(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const incoming = JSON.parse(e.target.result);
+                    if (!Array.isArray(incoming)) throw new Error("Expected a list of submissions");
+
+                    const existingIds = new Set(hazardData.map(i => i.id));
+                    let addedCount = 0;
+
+                    incoming.forEach(item => {
+                        // Avoid duplicate imports if the same file is loaded twice
+                        if (!existingIds.has(item.id)) {
+                            hazardData.unshift(item);
+                            existingIds.add(item.id);
+                            addedCount++;
+                        }
+                    });
+
+                    filteredData = [...hazardData];
+                    saveSharedHazards();
+                    renderTable();
+                    updateKPIs();
+                    updateCharts();
+
+                    alert(`Imported ${addedCount} new hazard submission(s) from the public page.`);
+                } catch (err) {
+                    alert("Could not read that file. Make sure it's a submissions export from the public dashboard.");
+                }
+                event.target.value = ''; // allow re-selecting the same file later
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
